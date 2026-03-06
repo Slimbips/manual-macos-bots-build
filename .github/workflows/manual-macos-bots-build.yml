@@ -1,0 +1,57 @@
+name: "macOS Bots Server Build"
+
+on:
+  workflow_dispatch:
+    inputs:
+      architectures:
+        description: "CMAKE_OSX_ARCHITECTURES value"
+        required: true
+        default: "arm64;x86_64"
+        type: string
+
+jobs:
+  build-macos-bots-server:
+    name: "Build macOS bots server-only"
+    runs-on: macos-15
+
+    env:
+      BUILD_TYPE: RelWithDebInfo
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install required packages
+        run: |
+          brew install flex bison ninja cmake llvm
+
+      - name: Configure CMake (server-only)
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_OSX_ARCHITECTURES='${{ inputs.architectures }}' \
+            -DBUILD_CLIENT=0 \
+            -DBUILD_SERVER=1 \
+            -DBUILD_RENDERER_GL1=OFF \
+            -DBUILD_RENDERER_GL2=OFF \
+            -DBUILD_MACOS_APP=OFF \
+            -DBUILD_GAME_QVMS=0
+
+      - name: Build
+        run: |
+          cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: Collect server artifacts
+        run: |
+          mkdir -p package
+          find build -type f \( -name "game*.dylib" -o -name "omohaaded" -o -name "omohaaded.exe" \) -exec cp {} package/ \;
+          ls -la package
+          test -n "$(ls -A package)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: out-macos-bots-server-only
+          if-no-files-found: error
+          compression-level: 9
+          path: package/
